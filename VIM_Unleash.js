@@ -1,7 +1,7 @@
 //=============================================================================
 // Vadavim - Unleash Skills
 // VIM_Unleash.js
-// Version: 1.0
+// Version: 1.1
 //=============================================================================
 
 var Imported = Imported || {};
@@ -11,7 +11,7 @@ var Vim = Vim || {};
 
 //=============================================================================
 /*:
- * @plugindesc v1.0 Allows for weapons and skills that randomly activate a different skill.
+ * @plugindesc v1.1 Allows for weapons and skills that randomly activate a different skill.
  * @author Vadavim
  *
  *
@@ -37,7 +37,8 @@ var Vim = Vim || {};
  * ============================================================================
  * Basic Use
  * ============================================================================
- * To add an unleash skill to a skill or weapon, add the following notetag:
+ * To add an unleash skill to a skill, weapon, actor, or class,
+ * add the following notetag:
  *
  * <unleash: skillID, chance>
  *
@@ -49,6 +50,17 @@ var Vim = Vim || {};
  * triggers. If none trigger, then the normal attack/skill is used instead.
  *
  * Unleash skills are checked for each equipped weapon when a character attacks.
+ *
+ *
+ * ============================================================================
+ * Conditional Unleash Skills
+ * ============================================================================
+ * If you would like the unleash skill to only activate if the actor has learned
+ * the skill, then you can instead use learned_unleash. As an example:
+ *
+ * <learned_unleash: skillID, chance>
+ *
+ * Where the skill would only activate if the character has learned it.
  *
  * ============================================================================
  * Luck Factor
@@ -87,6 +99,14 @@ var Vim = Vim || {};
  *
  * This would increase the base chance by 1% per point of luck, minus 1%
  * per point of difficulty that the unleash skill has.
+ *
+ *
+ * ============================================================================
+ * Change Log
+ * ============================================================================
+ * 1.1:
+ *      Added support for learned_unleash (only activates if skill is learned)
+ *      Now looks for unleash notetag in Actor and Class notes.
  *
  * ============================================================================
  * Terms of Use
@@ -133,9 +153,12 @@ Game_Actor.prototype.attackUnleash = function() {
     // iterate over each weapon, testing to see if unleash skill procs
     for (var i = 0; len = this.weapons().length, i < len; i++){
         var weapon = this.weapons()[i];
-        var success = Vim.Unleash.processUnleashTags(this, weapon.note);
-        if (success)
-            return success;
+        var weaponProc = Vim.Unleash.processUnleashTags(this, weapon.note);
+        var actorProc = Vim.Unleash.processUnleashTags(this, this.actor().note);
+        var classProc = Vim.Unleash.processUnleashTags(this,
+            this.currentClass().note);
+        if (weaponProc || actorProc || classProc)
+            return weaponProc || actorProc || classProc;
     }
     return normalId;
 };
@@ -147,16 +170,25 @@ Game_Actor.prototype.attackUnleash = function() {
 Vim.Unleash.processUnleashTags = function(user, notes) {
     if (!notes)
         return 0;
-    var pattern = /<unleash:\s*(\d+),?\s*(\d+)?,?\s*(\d+)?\s*>/ig;
+    console.log(notes);
+    var pattern = /<(learned_)?unleash:\s*(\d+),?\s*(\d+)?,?\s*(\d+)?\s*>/ig;
     var match;
 
     // iterate over all unleash notetags
     while (match = pattern.exec(notes)) {
-        var id = match[1];
-        var chance = match[2] || 50;
+        var learned = match[1];
+        var id = match[2];
+        var chance = match[3] || 50;
         chance = parseInt(chance) / 100;
-        var diff = match[3] || 0;
+        var diff = match[4] || 0;
         diff = parseInt(diff);
+
+        // if this requires the skill to be learned, skip if it's not learned
+        if (learned && !user.isLearnedSkill(parseInt(id))) {
+            console.log("bad");
+            continue;
+        }
+        console.log("good");
 
         // base chance modified by luck unless there was no difficulty set
         var mod = diff ? 1 + (user.luk - diff) / (user.luk + diff) : 1;
@@ -170,8 +202,10 @@ Vim.Unleash.processUnleashTags = function(user, notes) {
         if (eval(Vim.param['Debug']))
             console.log("Unleash Skill: " + id + ", Base Chance: " + chance +
                 ", Modified Chance: " + modified_chance);
-        if (id && Math.random() <= modified_chance)
+        if (id && Math.random() <= modified_chance) {
+            console.log("yep");
             return parseInt(id);
+        }
     }
     return 0;
 };
